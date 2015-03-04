@@ -21,6 +21,7 @@ void * receiveMessage(void * socket) {
       printf("Error recibiendo data!\n");    
     } else {
       printf("client: ");
+      // Aquí es donde recibo la información del cliente y hago cosas chéveres!!
       fputs(buffer, stdout);
     }  
  }
