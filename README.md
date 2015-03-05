@@ -3,20 +3,20 @@ SCS
 
 Puntos Listos
 
-Creación y Activación de Sockets. AD
-Verificar si hay solicitudes pendientes. AD
-Atender solicitudes recibidas por los sockets. AD
-Recibir los mensajes del usuario (cliente).
+1. Creación y Activación de Sockets. AD
+2. Verificar si hay solicitudes pendientes. AD
+3. Atender solicitudes recibidas por los sockets. AD
+4. Recibir los mensajes del usuario (cliente). AD
+5. Validar formato de los comandos del usuario (cliente). MG
+7. Enviar los mensajes al servidor (cliente). AD
+8. Recibir mensajes del cliente (servidor). AD
+9. Validar el formato de los mensajes del cliente (servidor). MG
 
 Pendientes
 
-Validar formato de los comandos del usuario (cliente).
-Traducir comandos para uso del servidor (cliente).
-Enviar los mensajes al servidor (cliente).
-Recibir mensajes del cliente (servidor).
-Validar el formato de los mensajes del cliente (servidor).
-Interpretar (por el servidor) los mensajes del cliente.
-Implementar la ejecución de los comandos.
-Responder las solicitudes del cliente.
-Recibir la respuesta del servidor, con respecto a la solicitud enviada (cliente).
-Mostrar al usuario el resultado de su solicitud (cliente).
+6. Traducir comandos para uso del servidor (cliente).
+10. Interpretar (por el servidor) los mensajes del cliente.
+11. Implementar la ejecución de los comandos.
+12. Responder las solicitudes del cliente.
+13. Recibir la respuesta del servidor, con respecto a la solicitud enviada (cliente).
+14. Mostrar al usuario el resultado de su solicitud (cliente).
