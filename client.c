@@ -12,6 +12,9 @@
 #define PORT 4444 
 #define BUF_SIZE 2000 
   
+int conectado;
+char * usuario;
+
 /**
  * Valida que lo ingresado por el usuario tenga un formato válido.
  * Esto abarca comandos y cantidad de argumentos.
@@ -25,7 +28,11 @@
 **/
 int validateMsg(char * command, char * message, char * arg1, char * arg2, int conv){
 
-  if (strcmp("conectar", command) == 0 && conv == 2){
+  if ((conectado == 0) && strcmp("conectarse", command) != 0) {
+    return(-2);
+  }
+
+  if (strcmp("conectarse", command) == 0 && conv == 2){
     if (sscanf(message,"%ms %ms",&arg1, &arg2) == 2) {
       return(1);
     } else {
@@ -65,9 +72,9 @@ int validateMsg(char * command, char * message, char * arg1, char * arg2, int co
       return(1);
   } else if (strcmp("elim_sala", command) == 0 && conv == 2){
       return(1);
-  } else if (strcmp("habilitar", command) == 0 && conv == 2){
+  } else if (strcmp("hab_sala", command) == 0 && conv == 2){
       return(1);
-  } else if (strcmp("deshabilitar", command) == 0 && conv == 2){
+  } else if (strcmp("deshab_sala", command) == 0 && conv == 2){
       return(1);
   } else if (strcmp("ver_log", command) == 0){
       return(0);
@@ -107,6 +114,7 @@ int main(int argc, char**argv) {
   int valid;
   int conv;
   pthread_t rThread;
+  conectado = 0;  // Esta variable debe cambiar cuando el usuario se conecte
   
   if (argc < 2) {
     printf("usage: client < ip address >\n");
@@ -150,7 +158,6 @@ int main(int argc, char**argv) {
       
     if (conv != -1) {
 
-
       valid = validateMsg(command, message, arg1, arg2, conv);
 
       if (valid == 0) {
@@ -164,10 +171,12 @@ int main(int argc, char**argv) {
           free(arg2);
           free(command);
           free(message);
+      } else if (valid == -2){
+        printf("\nDebe autenticarse para llevar a cabo esa operación.\n");
       } else {
          printf("\nFormato de Mensaje incorrecto.\n");
       }
-        if (valid != -1){
+        if (valid >= 0){
           ret = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &addr, sizeof(addr));
           if (ret < 0) {  
             printf("Error enviando data!\n\t-%s", buffer);

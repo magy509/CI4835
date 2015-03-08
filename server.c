@@ -15,6 +15,12 @@
 #define BUF_SIZE 2000
 #define CLADDR_LEN 100
 
+/**
+ * Declaración de variables globales
+**/
+GList * user = NULL;
+GList * room = NULL;
+
 void print_list(gpointer item){
   printf("\nVer Salas");
   printf("%s\n", item);
@@ -33,6 +39,7 @@ gint imprimirSala(gconstpointer sala_) {
   } else {
       printf(" - deshabilitada");
   }
+  printf("\nUsuarios de la sala: %d.", sala->n_usuarios);
 }
 
 gint imprimirUsuario(gconstpointer usuario_) {
@@ -44,6 +51,13 @@ gint imprimirUsuario(gconstpointer usuario_) {
 
   printf("\nNombre del usuario: %s",usuario->nombre);
   printf("\nClave del usuario: %s",usuario->clave);
+  printf("\nEstado del usuario: %d",usuario->status);
+}
+
+gint imprimirUsuariosSala(gconstpointer usuario_) {
+//  char * usuario = (char * usuario)usuario_;
+
+  printf("\nNombre del usuario");
 }
 
 gint buscarUsuarioPorNombre(gconstpointer usuario_, gconstpointer nombre_) {
@@ -56,27 +70,6 @@ gint buscarUsuarioPorNombre(gconstpointer usuario_, gconstpointer nombre_) {
 gint buscarSalaPorNombre(gconstpointer sala_, gconstpointer nombre_) {
   struct sala * sala = (struct sala *)sala_;
   char * nombre = (char *)nombre_;
-  printf("\nNombre de la sala: %s\n",sala->nombre);
-  return(strcmp(sala->nombre, nombre));
-}
-
-gint buscarEstadoSalaDes(gconstpointer sala_, gconstpointer nombre_) {
-  struct sala * sala = (struct sala *)sala_;
-  char * nombre = (char *)nombre_;
-
-  if (strcmp(sala->nombre, nombre) == 0) {
-      sala->status = 0;
-  }
-  return(strcmp(sala->nombre, nombre));
-}
-
-gint buscarEstadoSala(gconstpointer sala_, gconstpointer nombre_) {
-  struct sala * sala = (struct sala *)sala_;
-  char * nombre = (char *)nombre_;
-
-  if (strcmp(sala->nombre, nombre) == 0) {
-      sala->status = 1;
-  }
   return(strcmp(sala->nombre, nombre));
 }
 
@@ -108,22 +101,62 @@ gint buscarBorrarSala(gconstpointer sala_, gconstpointer nombre_) {
   }
 }
 
-gint buscarCantidadSala(gconstpointer sala_, gconstpointer nombre_) {
-  struct sala * sala = (struct sala *)sala_;
-  char * nombre = (char *)nombre_;
-  if (strcmp(sala->nombre, nombre) == 0) {
-    if (sala->n_usuarios == 0){
-      sala->status = 0; //Deshabilito la sala antes de eliminarla
-    }
+int verUsuarios(){
+  if (g_list_length(user) == 0) {
+    return(0);
+  } else {
+    g_list_foreach (user, (GFunc)imprimirUsuario, NULL);
+    return(1);
   }
 }
 
-void verUsuarios(){
-  g_list_foreach (user, (GFunc)imprimirUsuario, NULL);
+int verSalas(){
+  if (g_list_length (room) == 0){
+    return(0);
+  } else {
+    g_list_foreach (room, (GFunc)imprimirSala, NULL);
+    return(1);
+  }
 }
 
-void verSalas(){
-  g_list_foreach (room, (GFunc)imprimirSala, NULL);
+void imprimirTexto(gpointer texto_, gpointer formato_) {
+ char * texto = (char *)texto_;
+ char * formato = (char *)formato_;
+ printf(formato, texto);
+}
+
+/**
+ * Listar los usuarios de una sala
+ * @param nombre de la sala
+ * @return Devuelve -1 si la sala no existe, -2 si la sala está inactiva,
+ * 0 si no hay usuarios conectados a la sala,
+ * 1 si se muestra el listado exitosamente.
+**/
+int verUsuSalas(char * s){
+  
+  GList * resultado = g_list_find_custom(room, s, buscarSalaPorNombre);
+  if (resultado == NULL) {
+    printf("\nEntró a no existe con %s", s);
+    return(-1); //La sala no existe.
+  } else {
+    printf("\nEntró a existe con %s", s);
+    if (((struct sala *)resultado->data)->status == 0) {
+    printf("\nSala inactiva");
+      return(-2); //La sala está inactiva
+    } else if (((struct sala *)resultado->data)->n_usuarios == 0) {
+    printf("\nSala vacía");
+      return(0); // No hay usuarios conectados
+    } else {
+    printf("\nSala con usuarios");
+    int cant = g_list_length(((struct sala *)resultado->data)->usuarios);
+    char * nombre = g_list_first(((struct sala *)resultado->data)->usuarios)->data;
+    printf("\nCantidad de usuarios en la lista %d", cant);
+    printf("\nPrimer usuario en la lista %s", nombre);
+    
+    g_list_foreach(((struct sala *)resultado->data)->usuarios, imprimirTexto, "\nNombre del usuario: %s\n");
+      return(1);
+    }
+  }
 }
 
 /**
@@ -139,16 +172,11 @@ int deshabilitarSala(char * s){
   if (resultado == NULL){
     return(-1); // La sala no existe
   } else {
-    resultado = g_list_find_custom(room, s, buscarCantidadSala);
-    if (resultado == NULL){
+    if (((struct sala *)resultado->data)->n_usuarios > 1){
       return(0); // Hay usuarios conectados a la sala
     } else {
-      resultado = g_list_find_custom(room, s, buscarEstadoSalaDes);
-      if (resultado == NULL){
-        return(-1);
-      } else {
-        return(1);
-      }
+      ((struct sala *)resultado->data)->status = 0;
+      return(1);
     }
   }
 }
@@ -160,12 +188,13 @@ int deshabilitarSala(char * s){
 **/
 int habilitarSala(char * s){
 
-  GList * resultado = g_list_find_custom(room, s, buscarEstadoSala);
+  GList * resultado = g_list_find_custom(room, s, buscarSalaPorNombre);
 
   if (resultado == NULL){
-      return(-1);
+    return(-1);
   } else {
-      return(1);
+    ((struct sala *)resultado->data)->status = 1;
+    return(1);
   }
 }
 
@@ -211,31 +240,19 @@ int crearSala(char * room_name){
  * @return Devuelve -1 si el usuario existe, 1 si fue creado exitosamente.
 **/
 int crearUsuario(char * usuario, char * clave){
-  if (g_list_length (user) == 0){
 
-      struct usuario * u = malloc(sizeof(struct usuario));
-      u->nombre = usuario;
-      u->clave = clave;
-      u->status = 0;
-      user = g_list_append(user, u);
-      return(1);
+  GList * resultado = g_list_find_custom(user, usuario, buscarUsuarioPorNombre);
 
+  if (resultado == NULL){
+    struct usuario * u = malloc(sizeof(struct usuario));
+    u->nombre = usuario;
+    u->clave = clave;
+    u->status = 0;
+    u->is_admin = 0;
+    user = g_list_append(user, u);
+    return(1);
   } else {
-
-      GList * resultado = g_list_find_custom(user, usuario, buscarUsuarioPorNombre);
-
-      if (resultado == NULL){
-        struct usuario * u = malloc(sizeof(struct usuario));
-        u->nombre = usuario;
-        u->clave = clave;
-        u->status = 0;
-        user = g_list_append(user, u);
-        return(1);
-
-      } else {
-
-          return(-1);
-      }
+    return(-1);
   }
 }
 
@@ -281,19 +298,141 @@ int eliminarSala(char * room_name) {
   }
 }
 
+/**
+ * Desconecta un usuario del servidor
+ * @param nombre del usuario.
+ * @return Devuelve 0 si el usuario no está conectado
+ * y 1 si el usuario se desconecta exitosamente.
+**/
+int salir(char * nombre){
+
+  GList * resultado = g_list_find_custom(user, nombre, buscarUsuarioPorNombre);
+
+  if (resultado == NULL){
+    return(-1); //El usuario no existe
+  } else {
+    if (((struct usuario *)resultado->data)->status == 0) {
+      return(0); //El usuario no está conectado.
+    } else if (((struct usuario *)resultado->data)->status == 2) {
+      return(2); //El usuario está conectado a una sala. Aquí tengo que poder desconectar al usuario de la sala y luego del sistema
+    } else {
+      ((struct usuario *)resultado->data)->status = 0;
+      return(1);
+    }
+  }
+}
+
+/**
+ * Conecta un usuario al servidor
+ * @param nombre del usuario.
+ * @param clave del usuario.
+ * @return Devuelve -1 si el nombre de usuario no existe, -2 si la contraseña es incorrecta,
+ * 0 si el usuario ya está conectado y 1 si el usuario se conecta exitosamente.
+**/
 int conectar(char * nombre, char * clave){
   GList * resultado = g_list_find_custom(user, nombre, buscarUsuarioPorNombre);
-  if (resultado != NULL){
-    if (strcmp(((struct usuario *)resultado->data)->nombre, nombre) == 0) {
-      if (strcmp(((struct usuario *)resultado->data)->clave, clave) == 0) {
-        return(1);
-      } else {
-        return(-2);
-      }
-    return 1;
-    }
+  if (resultado == NULL){
+    return(-1); //Usuario no existe.
   } else {
-    return(-1);
+    if (strcmp(((struct usuario *)resultado->data)->clave, clave) == 0) {
+      if (((struct usuario *)resultado->data)->status > 0){
+        return(0); //Usuario ya está conectado.
+      } else {
+      ((struct usuario *)resultado->data)->status = 1;
+        return(1); // Conexión exitosa.
+      } 
+    } else {
+      return(-2); // Clave inválida.
+    }
+  }
+}
+
+/**
+ * Conecta un usuario a una sala
+ * @param nombre de la sala.
+ * @param nombre del usuario.
+ * @return Devuelve -3 si el usuario no existe, -2 si el usuario ya está conectado a una sala,
+ * -4 si el usuario no está conectado en el SCS, -1 si la clave no existe, 0 si la sala está deshabilitada
+ * y 1 si el usuario se conecta exitosamente.
+**/
+int entrarSala(char * room_name, char * nombre){
+
+  GList * resultUsuario = g_list_find_custom(user, nombre, buscarUsuarioPorNombre);
+
+  if (resultUsuario == NULL){
+    return(-3);  //El usuario no existe
+  } else {
+
+    if (((struct usuario *)resultUsuario->data)->status == 2) {
+      return(-2); // El usuario ya está conectado a una sala.
+    } else if (((struct usuario *)resultUsuario->data)->status == 0){
+      return(-4); // El usuario no está conectado en el SCS.
+    } else {
+      
+      GList * resultSala = g_list_find_custom(room, room_name, buscarSalaPorNombre);
+
+      if (resultSala == NULL){
+
+        return(-1);  // La sala no existe
+    
+      } else {
+
+        if (((struct sala *)resultSala->data)->status == 0) {
+        return(0); // La sala está inactiva
+
+        } else {
+
+          ((struct sala *)resultSala->data)->usuarios = g_list_append(((struct sala *)resultSala->data)->usuarios, nombre);
+          ((struct usuario *)resultUsuario->data)->status = 2;
+          ((struct sala *)resultSala->data)->n_usuarios +=1;
+          return(1); //Conexión exitosa
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Saca un usuario a una sala
+ * @param nombre de la sala.
+ * @param nombre del usuario.
+ * @return Devuelve 0 si el usuaio no está conectado a la sala, -1 si la sala no existe
+ * y 1 si el usuario sale exitosamente.
+**/
+int dejarSala(char * room_name, char * nombre){
+
+  GList * resultUsuario = g_list_find_custom(user, nombre, buscarUsuarioPorNombre);
+
+  if (resultUsuario == NULL){
+    return(0);  //El usuario no existe
+  } else {
+
+    if (((struct usuario *)resultUsuario->data)->status == 1) {
+      return(0); // El usuario no está conectado a una sala.
+    } else if (((struct usuario *)resultUsuario->data)->status == 0){
+      return(0); // El usuario no está conectado a la sala.
+    } else {
+      
+      GList * resultSala = g_list_find_custom(room, room_name, buscarSalaPorNombre);
+
+      if (resultSala == NULL){
+
+        return(-1);  // La sala no existe
+    
+      } else {
+
+        if (((struct sala *)resultSala->data)->status == 0) {
+          return(0); // El usuario no está conectado a la sala.
+        } else  if (((struct sala *)resultSala->data)->n_usuarios == 0){
+          return(0);
+        } else {
+          ((struct sala *)resultSala->data)->usuarios = g_list_remove(((struct sala *)resultSala->data)->usuarios, nombre);
+          ((struct usuario *)resultUsuario->data)->status = 1;
+          ((struct sala *)resultSala->data)->n_usuarios -=1;
+          return(1);
+        }
+      }
+    }
   }
 }
 
@@ -312,132 +451,189 @@ char * validateMsg(char * command, char * message, char * arg1, char * arg2, int
   int salida;
   char * result;
 
-  if (strcmp("conectar", command) == 0 && conv == 2){
+  if (strcmp("conectarse", command) == 0 && conv == 2){
     if (sscanf(message,"%ms %ms",&arg1, &arg2) == 2) {
-      salida = conectar(arg1, arg2);
 
-      printf("\nSalida %d", salida);
+      salida = conectar(arg1, arg2);
       if (salida == 1) {
-        result = "Conexion exitosa.";
-      } else if (salida == -1) {
-        result = "Nombre de usuario no existe.";      
+        result = "\nConexion exitosa.";
+      } else if (salida == 0) {
+        result = "\nEl usuario ya está conectado.";      
       } else if (salida == -2) {
-        result = "Contraseña Invalida.";
+        result = "\nContraseña Invalida.";
+      } else {
+        result = "\nNombre de usuario no existe.";      
       }
     } else {
-      result = "No se pudo ejecutar el comando.";
+      result = "\nNo se pudo ejecutar el comando.";
     }
-      return(result);
+    return(result);
 
   } else if (strcmp("salir", command) == 0){
+      salida = salir("magy"); // Tengo que pasar el nombre del usuario asociado al cliente.
+      if (salida == 1) {
+        result = "\nEl usuario ha salido del char exitosamente.";
+      } else if (salida == 0) {
+        result = "\nEl usuario no está conectado.";
+      } else if (salida == 2) {
+        result = "\nEl usuario está conectado a una sala.";
+      } else {
+        result = "\nEl usuario no existe.";
+      }
       return(result);
 
   } else if (strcmp("entrar", command) == 0 && conv == 2){
-      return("Holis");
+
+    salida = entrarSala(message, "magy");
+    
+    if (salida == -4) {
+      result = "\nEl usuario no está conectado al chat.";
+    } else if (salida == -3) {
+      result = "\nEl usuario no existe.";
+    } else if (salida == -2) {
+      result = "\nEl usuario ya está conectado a una sala.";
+    } else if (salida == 0) {
+      result = "\nLa sala está inactiva.";
+    } else if (salida == 1) {
+      result = "\nConexión exitosa a la sala.";
+    } else {
+      result = "\nLa sala no existe.";
+    }
+    return(result);
 
   } else if (strcmp("dejar", command) == 0 && conv == 2){
-      return("Holis");
+    salida = dejarSala(message, "magy");
+    if (salida == 0) {
+      result = "\nEl usuario no está conectado a la sala.";
+    } else if (salida == 1){
+      result = "\nEl usuario dejó la sala exitosamente.";
+    } else {
+      result = "\nLa sala no existe.";
+    }
+      return(result);
 
   } else if (strcmp("ver_salas", command) == 0){
-    verSalas();
-	return("Holis!");
+    salida = verSalas();
+    if (salida == 1) {
+      result = "\nLista de salas"; //Aquí, result debería ser el string que se imprime en la otra cosa.
+    } else {
+      result = "\nNo hay salas en el servidor.";
+    }
+	return(result);
 
   } else if (strcmp("ver_usuarios", command) == 0){
-     verUsuarios();
-      return("Holis!");
+     salida = verUsuarios();
+     if (salida == 1) {
+       result = "\nLista Usuarios";
+     } else {
+       result = "\nNo hay usuarios en el servidor.";
+     }
+     return(result);
 
   } else if (strcmp("ver_usu_salas", command) == 0 && conv == 2){
-      return("Holis!");
+
+    salida = verUsuSalas(message);
+
+    if (salida == -2) {
+      result = "\nLa sala está inactiva";
+    } else if (salida == 0) {
+      result = "\nLa sala no tiene usuarios conectados";
+    } else if (salida == 1) {
+      result = "\nUsuarios Conectados:"; //Aquí tengo que pasar un string con los usuarios conectados TODO
+    } else {
+      result = "\nLa sala no existe.";
+    }
+    return(result);
 
   } else if (strcmp("env_mensaje", command) == 0  && conv == 2){
 	  if(strlen(message) <= 70){
         return("Holis");
   	  } else {
-      result = "No se pudo ejecutar el comando.";
-        return(result);
+      result = "\nNo se pudo ejecutar el comando.";
       }
+      return(result);
 
   } else if (strcmp("crear_usu", command) == 0 && conv == 2){
     if (sscanf(message,"%ms %ms",&arg1, &arg2) == 2) {
-        salida = crearUsuario(arg1, arg2);
+
+      salida = crearUsuario(arg1, arg2);
       if (salida == 1){
-        result = "Usuario creado exitosamente.";
+        result = "\nUsuario creado exitosamente.";
       } else {
-        result = "Nombre de usuario ya existe.";
+        result = "\nNombre de usuario ya existe.";
       }
-
-      return(result);
-
     } else {
-      result = "No se pudo ejecutar el comando.";
-      return(result);
+      result = "\nNo se pudo ejecutar el comando.";
     }
+    return(result);
 
   } else if (strcmp("elim_usu", command) == 0 && conv == 2){
     if (sscanf(message,"%ms %ms",&arg1, &arg2) == 2) {
-      printf("Validando");
+
       salida = eliminarUsuario(arg1, arg2);
-      printf("Validando con salida = %d", salida);
       if (salida == -2) {
-        result = "Contraseña incorrecta.";
+        result = "\nContraseña incorrecta.";
       } else if (salida == 0) {
-        result = "El usuario está conectado.";
+        result = "\nEl usuario está conectado a una sala. No puede ser eliminado.";
       } else if (salida == 1){
-        result = "El usuario fue eliminado exitosamente.";
+        result = "\nEl usuario fue eliminado exitosamente.";
       } else {
-        result = "El usuario no existe.";
+        result = "\nEl usuario no existe.";
       }
     } else {
-      result = "No se pudo ejecutar el comando.";
+      result = "\nNo se pudo ejecutar el comando.";
     }
-      return(result);
+    return(result);
 
   } else if (strcmp("crear_sala", command) == 0 && conv == 2){
+
       salida = crearSala(message);
       if (salida == 1){
-        result = "Sala creada exitosamente.";
-
+        result = "\nSala creada exitosamente.";
       } else {
-        result = "La sala ya existe.";
+        result = "\nLa sala ya existe.";
       }
       return(result);
 
   } else if (strcmp("elim_sala", command) == 0 && conv == 2){
+
       salida = eliminarSala(message);
       if(salida == 0) {
-        result = "Hay usuarios conectados en la sala. No puede ser eliminada.";
+        result = "\nHay usuarios conectados en la sala. No puede ser eliminada.";
       } else if (salida == 1) {
-        result = "Sala eliminada exitosamente.";
+        result = "\nSala eliminada exitosamente.";
       } else {
-        result = "La sala no existe.";
+        result = "\nLa sala no existe.";
       }
       return(result);
 
-  } else if (strcmp("habilitar", command) == 0 && conv == 2){
+  } else if (strcmp("hab_sala", command) == 0 && conv == 2){
 
-      if (habilitarSala(message) == -1){
-          result = "Sala no existe.";
+      salida = habilitarSala(message);
+      if (salida == -1){
+          result = "\nLa sala no existe.";
       } else {
-          result = "Sala habilitada.";
+          result = "\nSala habilitada.";
       }
       return(result);
 
-  } else if (strcmp("deshabilitar", command) == 0 && conv == 2){
-      if (deshabilitarSala(message) == 0) {
-        result = "Hay usuarios conectados en la sala. No puede ser deshabilitada.";
-      } else if (deshabilitarSala(message) == 1){
-        result = "Sala deshabilitada exitosamente.";
-      } else {
-        result = "La sala no existe.";
-      }
+  } else if (strcmp("deshab_sala", command) == 0 && conv == 2){
 
+      salida = deshabilitarSala(message);
+      if (salida == 0) {
+        result = "\nHay usuarios conectados en la sala. No puede ser deshabilitada.";
+      } else if (salida == 1){
+        result = "\nSala deshabilitada exitosamente.";
+      } else {
+        result = "\nLa sala no existe.";
+      }
       return(result);
 
   } else if (strcmp("ver_log", command) == 0){
       return("Holis");
 
   } else {
-      result = "No se pudo ejecutar el comando.";
+      result = "\nNo se pudo ejecutar el comando.";
       return(result);
   }
 }
@@ -495,6 +691,13 @@ void main() {
   pid_t childpid;
   char clientAddr[CLADDR_LEN];
   pthread_t rThread;
+
+  struct usuario * u = malloc(sizeof(struct usuario));
+  u->nombre = "admin";
+  u->clave = "claveadmin";
+  u->status = 0;
+  u->is_admin = 1;
+  user = g_list_append(user, u);
 
   sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (sockfd < 0) {
