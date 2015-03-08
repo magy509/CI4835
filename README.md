@@ -11,12 +11,34 @@ Puntos Listos
 7. Enviar los mensajes al servidor (cliente). AD
 8. Recibir mensajes del cliente (servidor). AD
 9. Validar el formato de los mensajes del cliente (servidor). MG
+10. Interpretar (por el servidor) los mensajes del cliente.
+11. Implementar la ejecución de los comandos.
+    CrearSala P
+    CrearUsuario P
+    Habilitar P
+    VerSalas T (para usuarios con y sin privilegios. El usuario con privilegios puede ver las activas y las inactivas)
+    VerUsuarios T
+    Deshabilitar P
+    EliminarSala P
+    Conectarse T
+      Validar que el usuario exista.
+    EliminarUsuario P
 
 Pendientes
 
-6. Traducir comandos para uso del servidor (cliente).
-10. Interpretar (por el servidor) los mensajes del cliente.
 11. Implementar la ejecución de los comandos.
+VerSalas T (AGREGAR RESTRICCIÓN POR USUARIO.)
+VerUsuarios T (AGREGAR RESTRICCION POR USUARIO)
+VerUsuSalas T
+VerBitacora P
+Conectarse T
+  Validar que el usuario exista.
+  Cambiar las cosas en el cliente para que todo se haga a nombre del usuario recién conectado.
+Salir T
+Entrar T
+Dejar T
+EnviarMensaje T
+
 12. Responder las solicitudes del cliente.
 13. Recibir la respuesta del servidor, con respecto a la solicitud enviada (cliente).
 14. Mostrar al usuario el resultado de su solicitud (cliente).

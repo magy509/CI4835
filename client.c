@@ -25,9 +25,6 @@
 **/
 int validateMsg(char * command, char * message, char * arg1, char * arg2, int conv){
 
-//    printf("\ncomando:%s ", command);
-//    printf("\nmensaje:%s ", message);
-
   if (strcmp("conectar", command) == 0 && conv == 2){
     if (sscanf(message,"%ms %ms",&arg1, &arg2) == 2) {
       return(1);
@@ -103,7 +100,7 @@ int main(int argc, char**argv) {
   char buffer[BUF_SIZE]; 
   char * serverAddr;
   char * command;
-  char message[100];
+  char * message;
   char * arg1;
   char * arg2;
   char * buf;
@@ -148,21 +145,25 @@ int main(int argc, char**argv) {
 
 
     // Validar el formato del comando del usuario
-    conv = sscanf(buffer,"%ms %[^\t\n]",&command, message);
+    conv = sscanf(buffer,"%ms %m[^\t\n]",&command, &message);
+    //printf("\nComando %s. Argumento %s. Conversión %d\n", command, message, conv);
       
     if (conv != -1) {
 
-      sscanf(message,"%ms %ms",&arg1, &arg2);
+
       valid = validateMsg(command, message, arg1, arg2, conv);
 
       if (valid == 0) {
 	      free(command);
+          free(message);
       } else if (valid == 1){
           free(command);
+          free(message);
       } else if (valid == 2){
           free(arg1);
           free(arg2);
           free(command);
+          free(message);
       } else {
          printf("\nFormato de Mensaje incorrecto.\n");
       }
