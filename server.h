@@ -23,6 +23,11 @@
 
 #include <glib.h>
 
+#define IPV_UNSET (-1)          // Protocolo de capa de red indefinido
+#define IPV_IPV4 1
+#define IPV_IPV6 2
+#define DEFAULT_BACKLOG 5
+
 extern GList * user;
 extern GList * room;
 
@@ -40,6 +45,8 @@ struct usuario {
   char *clave;
   int status;
   int is_admin;
+  int socket;
+  char * sala;
 };
 
 #endif

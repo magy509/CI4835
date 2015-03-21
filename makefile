@@ -1,16 +1,19 @@
+LDFLAGS = -ggdb `pkg-config --libs glib-2.0` -pthread
+CFLAGS = -ggdb `pkg-config --cflags glib-2.0` -pthread
+
 all: client server
 
 server: server.o
-	gcc `pkg-config --cflags --libs glib-2.0` -o server server.o -pthread
+	gcc -o $@ server.o $(LDFLAGS)
 
 client: client.o 
-	gcc client.o -o client -pthread
+	gcc -o $@ client.o $(LDFLAGS)
 
-server.o: server.c server.h
-	gcc `pkg-config --cflags --libs glib-2.0` -c server.c server.h
+server.o: server.c server.h comando.h
+	gcc -c server.c $(CFLAGS)
 
-client.o: client.c
-	gcc client.c -c  
+client.o: client.c comando.h
+	gcc -c client.c $(CFLAGS)
 
 clean:
-	rm -f *.o client server
+	rm -f ./*.o client server

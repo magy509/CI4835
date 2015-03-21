@@ -1,17 +1,22 @@
-#include"stdio.h"
-#include"stdlib.h"
-#include"sys/types.h"
-#include"sys/socket.h"
-#include"string.h"
-#include"netinet/in.h"
-#include"pthread.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <string.h>
+#include <netinet/in.h>
+#include <pthread.h>
 #include <errno.h>
 #include <sysexits.h>
 #include <glib.h>
-
+#include <errno.h>
+#include <fcntl.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/select.h>
 #include "server.h"
+#include "comando.h"
 
-#define PORT 4444
+#define PORT "4444"
 #define BUF_SIZE 2000
 #define CLADDR_LEN 100
 
@@ -21,49 +26,81 @@
 GList * user = NULL;
 GList * room = NULL;
 
-void print_list(gpointer item){
-  printf("\nVer Salas");
-  printf("%s\n", item);
-}
+char * lista;
 
-gint imprimirSala(gconstpointer sala_) {
+void imprimirSala(gconstpointer sala_, gconstpointer is_admin_) {
   struct sala * sala = (struct sala *)sala_;
+  int is_admin = *((int *)is_admin_);
+  char * str_arg1;
+  char * str_arg2;
 
-  // Aquí tengo que verificar el tipo de usuario que envía el mensaje.
-  // Si es un usuario sin privilegios, solo podrá ver las salas habilitadas
-  // Si es un usuario con privilegios, podrá ver todas las salas.
-
-  printf("\nNombre de la sala: %s",sala->nombre);
-  if (sala->status == 1){
-      printf(" - habilitada");  
+  str_arg1 = malloc(strlen(sala->nombre)+1);
+  str_arg1 = sala->nombre; 
+  if (is_admin == 1){
+    if (0 == strlen(lista)){
+      if (sala->status != 0){
+        asprintf(&lista, "%s - Habilitada\n", str_arg1);
+      } else {
+        asprintf(&lista, "%s - Deshabilitada\n", str_arg1);
+      } 
+    } else {
+      if (sala->status != 0){
+        asprintf(&lista, "%s%s - Habilitada\n", lista, str_arg1);
+      } else {
+        asprintf(&lista, "%s%s - Deshabilitada\n", lista, str_arg1);
+      } 
+    }
   } else {
-      printf(" - deshabilitada");
+      if (sala->status == 1) {
+        if (0 == strlen(lista)){
+          asprintf(&lista, "%s\n", str_arg1);
+      } else {
+        asprintf(&lista, "%s%s\n", lista, str_arg1);
+      }
+    }
   }
-  printf("\nUsuarios de la sala: %d.", sala->n_usuarios);
 }
 
-gint imprimirUsuario(gconstpointer usuario_) {
+void imprimirUsuario(gconstpointer usuario_, gconstpointer is_admin_) {
   struct usuario * usuario = (struct usuario *)usuario_;
+  int is_admin = *((int *)is_admin_);
+  char * str_arg1;
+  char * str_arg2;
 
-  // Aquí tengo que verificar el tipo de usuario que envía el mensaje.
-  // Si es un usuario sin privilegios, solo podrá ver los nombres.
-  // Si es un usuario con privilegios, podrá ver toda la información.
+  str_arg1 = malloc(strlen(usuario->nombre)+1);
+  str_arg1 = usuario->nombre; 
+  str_arg2 = malloc(strlen(usuario->clave)+1);
+  str_arg2 = usuario->clave; 
 
-  printf("\nNombre del usuario: %s",usuario->nombre);
-  printf("\nClave del usuario: %s",usuario->clave);
-  printf("\nEstado del usuario: %d",usuario->status);
-}
 
-gint imprimirUsuariosSala(gconstpointer usuario_) {
-//  char * usuario = (char * usuario)usuario_;
-
-  printf("\nNombre del usuario");
+  if (is_admin == 1) {
+      if (usuario->status == 0){
+        if(strlen(lista) == 0){
+          asprintf(&lista, "Nombre: %s Clave: %s - Desconectado\n", str_arg1, str_arg2);
+        } else {
+          asprintf(&lista, "%sNombre: %s Clave: %s - Desconectado\n", lista, str_arg1, str_arg2);
+        }
+      } else {
+        if(strlen(lista) == 0){
+          asprintf(&lista, "Nombre: %s Clave: %s - Conectado\n", str_arg1, str_arg2);
+        } else {
+          asprintf(&lista, "%sNombre: %s Clave: %s - Conectado\n", lista, str_arg1, str_arg2);
+        }
+      }
+  } else {
+    if (usuario -> status != 0){
+      if(strlen(lista) == 0){
+        asprintf(&lista, "Nombre: %s\n", str_arg1);
+      } else {
+        asprintf(&lista, "%sNombre: %s\n", lista, str_arg1);
+      }
+    }
+  }
 }
 
 gint buscarUsuarioPorNombre(gconstpointer usuario_, gconstpointer nombre_) {
   struct usuario * usuario = (struct usuario *)usuario_;
   char * nombre = (char *)nombre_;
-//  printf("\nNombre del usuario: %s\n",usuario->nombre);
   return(strcmp(usuario->nombre, nombre));
 }
 
@@ -71,6 +108,15 @@ gint buscarSalaPorNombre(gconstpointer sala_, gconstpointer nombre_) {
   struct sala * sala = (struct sala *)sala_;
   char * nombre = (char *)nombre_;
   return(strcmp(sala->nombre, nombre));
+}
+
+gint buscarUsuarioPorSocket(gconstpointer usuario_, gconstpointer socket_) {
+  struct usuario * usuario = (struct usuario *)usuario_;
+  int socket = *((int *)socket_);
+  if (usuario -> socket == socket){
+    return 0;
+  }
+  return -1;
 }
 
 /**
@@ -97,33 +143,41 @@ gint buscarBorrarSala(gconstpointer sala_, gconstpointer nombre_) {
   char * nombre = (char *)nombre_;
   if (strcmp(sala->nombre, nombre) == 0) {
       room = g_list_remove(room, sala);
-    return(1);
+    return 1;
   }
 }
 
-int verUsuarios(){
+int verUsuarios(int is_admin){
   if (g_list_length(user) == 0) {
-    return(0);
+    return 0;
   } else {
-    g_list_foreach (user, (GFunc)imprimirUsuario, NULL);
-    return(1);
+    g_list_foreach (user, (GFunc)imprimirUsuario, &is_admin);
+    return 1;
   }
 }
 
-int verSalas(){
+int verSalas(int is_admin){
   if (g_list_length (room) == 0){
-    return(0);
+    return 0;
   } else {
-    g_list_foreach (room, (GFunc)imprimirSala, NULL);
-    return(1);
+    g_list_foreach (room, (GFunc)imprimirSala, &is_admin);
+    return 1;
   }
 }
 
-void imprimirTexto(gpointer texto_, gpointer formato_) {
- char * texto = (char *)texto_;
- char * formato = (char *)formato_;
- printf(formato, texto);
+void mandar_todos_los_usuarios(gpointer usuario_, gpointer conn_) {
+  char * usuario = (char *)usuario_;
+  int conn = *((int *)conn_);
+
+  char * texto = NULL;
+  if (-1 == asprintf(&texto, "Nombre de usuario conectado: %s\n", usuario)) {
+    perror("asprintf");
+    exit(EX_IOERR);
+  }
+  escribir(conn, texto, strlen(texto));
+  free(texto);
 }
+
 
 /**
  * Listar los usuarios de una sala
@@ -132,28 +186,19 @@ void imprimirTexto(gpointer texto_, gpointer formato_) {
  * 0 si no hay usuarios conectados a la sala,
  * 1 si se muestra el listado exitosamente.
 **/
-int verUsuSalas(char * s){
+int verUsuSalas(char * s, int conn){
   
   GList * resultado = g_list_find_custom(room, s, buscarSalaPorNombre);
   if (resultado == NULL) {
-    printf("\nEntró a no existe con %s", s);
     return(-1); //La sala no existe.
   } else {
-    printf("\nEntró a existe con %s", s);
     if (((struct sala *)resultado->data)->status == 0) {
-    printf("\nSala inactiva");
       return(-2); //La sala está inactiva
     } else if (((struct sala *)resultado->data)->n_usuarios == 0) {
-    printf("\nSala vacía");
       return(0); // No hay usuarios conectados
     } else {
-    printf("\nSala con usuarios");
-    int cant = g_list_length(((struct sala *)resultado->data)->usuarios);
-    char * nombre = g_list_first(((struct sala *)resultado->data)->usuarios)->data;
-    printf("\nCantidad de usuarios en la lista %d", cant);
-    printf("\nPrimer usuario en la lista %s", nombre);
-    
-    g_list_foreach(((struct sala *)resultado->data)->usuarios, imprimirTexto, "\nNombre del usuario: %s\n");
+      printf("Antes de la función mandar\n");
+      g_list_foreach(((struct sala *)resultado->data)->usuarios, mandar_todos_los_usuarios, &conn);
       return(1);
     }
   }
@@ -249,6 +294,8 @@ int crearUsuario(char * usuario, char * clave){
     u->clave = clave;
     u->status = 0;
     u->is_admin = 0;
+    u->socket = -1;
+    u->sala= NULL;
     user = g_list_append(user, u);
     return(1);
   } else {
@@ -269,6 +316,7 @@ int eliminarUsuario(char * usuario, char * clave) {
     
     return(-1);
   } else if (((struct usuario *)resultado->data)->status > 0) {
+    printf("Sala\n",((struct usuario *)resultado->data)->sala);
     return(0);
   } else {
     if (strcmp(((struct usuario *)resultado->data)->clave, clave) == 0) {
@@ -314,9 +362,14 @@ int salir(char * nombre){
     if (((struct usuario *)resultado->data)->status == 0) {
       return(0); //El usuario no está conectado.
     } else if (((struct usuario *)resultado->data)->status == 2) {
-      return(2); //El usuario está conectado a una sala. Aquí tengo que poder desconectar al usuario de la sala y luego del sistema
+      printf("El usuario está en una sala\n");
+      dejarSala(((struct usuario *)resultado->data)->sala, ((struct usuario *)resultado->data)->nombre);
+      ((struct usuario *)resultado->data)->status = 0;
+      ((struct usuario *)resultado->data)->socket = -1;
+      return(1); //El usuario está conectado a una sala. Aquí tengo que poder desconectar al usuario de la sala y luego del sistema
     } else {
       ((struct usuario *)resultado->data)->status = 0;
+      ((struct usuario *)resultado->data)->socket = -1;
       return(1);
     }
   }
@@ -329,7 +382,7 @@ int salir(char * nombre){
  * @return Devuelve -1 si el nombre de usuario no existe, -2 si la contraseña es incorrecta,
  * 0 si el usuario ya está conectado y 1 si el usuario se conecta exitosamente.
 **/
-int conectar(char * nombre, char * clave){
+int conectar(char * nombre, char * clave, int conn){
   GList * resultado = g_list_find_custom(user, nombre, buscarUsuarioPorNombre);
   if (resultado == NULL){
     return(-1); //Usuario no existe.
@@ -338,7 +391,8 @@ int conectar(char * nombre, char * clave){
       if (((struct usuario *)resultado->data)->status > 0){
         return(0); //Usuario ya está conectado.
       } else {
-      ((struct usuario *)resultado->data)->status = 1;
+        ((struct usuario *)resultado->data)->status = 1;
+        ((struct usuario *)resultado->data)->socket = conn;
         return(1); // Conexión exitosa.
       } 
     } else {
@@ -383,8 +437,9 @@ int entrarSala(char * room_name, char * nombre){
         } else {
 
           ((struct sala *)resultSala->data)->usuarios = g_list_append(((struct sala *)resultSala->data)->usuarios, nombre);
-          ((struct usuario *)resultUsuario->data)->status = 2;
           ((struct sala *)resultSala->data)->n_usuarios +=1;
+          ((struct usuario *)resultUsuario->data)->status = 2;
+          ((struct usuario *)resultUsuario->data)->sala = room_name;
           return(1); //Conexión exitosa
         }
       }
@@ -436,318 +491,565 @@ int dejarSala(char * room_name, char * nombre){
   }
 }
 
+void enviarTodos(gpointer usuario_, gpointer mensaje_) {
+  char * usuario = (char *)usuario_;
+  char * mensaje = (char *)mensaje_;
+
+  GList * resultado = g_list_find_custom(user, usuario, buscarUsuarioPorNombre);
+
+  int res = asprintf(&lista, "%s: %s\n", usuario, mensaje);
+//  printf("Resultado del asprintf %d\n", res);
+//  char * texto = NULL;
+//  if (-1 == asprintf(&texto,"%s: %s\n", usuario, mensaje)) {
+//    perror("asprintf");
+//    exit(EX_IOERR);
+//  }
+
+
+  int conn = ((struct usuario *)resultado->data)->socket;
+
+  escribir(conn, lista, strlen(lista));
+  free(lista);
+}
+
+
 /**
- * Valida que lo enviado por el cliente, tenga un formato válido.
- * Esto abarca comandos y cantidad de argumentos.
- * @param comando recibido por cónsola.
- * @param string que sigue al comando.
- * @param argumento auxiliar para separar el string message.
- * @param argumento auxiliar para separar el string message.
- * @param cantidad de elementos que fueron convertidos exitosamente en el sscanf.
- * @return Devuelve 0 si el comando no utiliza argumentos. Devuelve 1 si el comando utiliza 1 argumento.
- * Devuelve 2 si el comando utiliza dos argumentos. Devuelve -1 si es un comando inválido.
+ * Listar los usuarios de una sala
+ * @param nombre de la sala
+ * @return Devuelve -1 si la sala no existe, -2 si la sala está inactiva,
+ * 0 si no hay usuarios conectados a la sala,
+ * 1 si se muestra el listado exitosamente.
 **/
-char * validateMsg(char * command, char * message, char * arg1, char * arg2, int conv){
-  int salida;
-  char * result;
+int enviarMensaje(char * sala, char * mensaje){
+  
+  GList * resultado = g_list_find_custom(room, sala, buscarSalaPorNombre);
+  g_list_foreach(((struct sala *)resultado->data)->usuarios, enviarTodos, mensaje);
+  return(1);
+}
 
-  if (strcmp("conectarse", command) == 0 && conv == 2){
-    if (sscanf(message,"%ms %ms",&arg1, &arg2) == 2) {
-
-      salida = conectar(arg1, arg2);
-      if (salida == 1) {
-        result = "\nConexion exitosa.";
-      } else if (salida == 0) {
-        result = "\nEl usuario ya está conectado.";      
-      } else if (salida == -2) {
-        result = "\nContraseña Invalida.";
-      } else {
-        result = "\nNombre de usuario no existe.";      
-      }
-    } else {
-      result = "\nNo se pudo ejecutar el comando.";
+/**
+ * Se encarga de escribir en el file descriptor del socket el contenido
+ * de buf.
+ * @param fd file descriptor del socket donde se va a escribir.
+ * @param buf contenido que se va a escribir en fd.
+ * @param count tamaño del contenido que se va a escribir.
+ */
+escribir(int fd, void * buf, size_t count) {
+  while (count > 0) {
+    int escrito = write(fd, buf, count);
+    if (-1 == escrito) {
+      if (EINTR == errno) continue;
+      perror("write");
+      exit(EX_IOERR);
     }
-    return(result);
 
-  } else if (strcmp("salir", command) == 0){
-      salida = salir("magy"); // Tengo que pasar el nombre del usuario asociado al cliente.
-      if (salida == 1) {
-        result = "\nEl usuario ha salido del char exitosamente.";
-      } else if (salida == 0) {
-        result = "\nEl usuario no está conectado.";
-      } else if (salida == 2) {
-        result = "\nEl usuario está conectado a una sala.";
-      } else {
-        result = "\nEl usuario no existe.";
-      }
-      return(result);
-
-  } else if (strcmp("entrar", command) == 0 && conv == 2){
-
-    salida = entrarSala(message, "magy");
-    
-    if (salida == -4) {
-      result = "\nEl usuario no está conectado al chat.";
-    } else if (salida == -3) {
-      result = "\nEl usuario no existe.";
-    } else if (salida == -2) {
-      result = "\nEl usuario ya está conectado a una sala.";
-    } else if (salida == 0) {
-      result = "\nLa sala está inactiva.";
-    } else if (salida == 1) {
-      result = "\nConexión exitosa a la sala.";
-    } else {
-      result = "\nLa sala no existe.";
-    }
-    return(result);
-
-  } else if (strcmp("dejar", command) == 0 && conv == 2){
-    salida = dejarSala(message, "magy");
-    if (salida == 0) {
-      result = "\nEl usuario no está conectado a la sala.";
-    } else if (salida == 1){
-      result = "\nEl usuario dejó la sala exitosamente.";
-    } else {
-      result = "\nLa sala no existe.";
-    }
-      return(result);
-
-  } else if (strcmp("ver_salas", command) == 0){
-    salida = verSalas();
-    if (salida == 1) {
-      result = "\nLista de salas"; //Aquí, result debería ser el string que se imprime en la otra cosa.
-    } else {
-      result = "\nNo hay salas en el servidor.";
-    }
-	return(result);
-
-  } else if (strcmp("ver_usuarios", command) == 0){
-     salida = verUsuarios();
-     if (salida == 1) {
-       result = "\nLista Usuarios";
-     } else {
-       result = "\nNo hay usuarios en el servidor.";
-     }
-     return(result);
-
-  } else if (strcmp("ver_usu_salas", command) == 0 && conv == 2){
-
-    salida = verUsuSalas(message);
-
-    if (salida == -2) {
-      result = "\nLa sala está inactiva";
-    } else if (salida == 0) {
-      result = "\nLa sala no tiene usuarios conectados";
-    } else if (salida == 1) {
-      result = "\nUsuarios Conectados:"; //Aquí tengo que pasar un string con los usuarios conectados TODO
-    } else {
-      result = "\nLa sala no existe.";
-    }
-    return(result);
-
-  } else if (strcmp("env_mensaje", command) == 0  && conv == 2){
-	  if(strlen(message) <= 70){
-        return("Holis");
-  	  } else {
-      result = "\nNo se pudo ejecutar el comando.";
-      }
-      return(result);
-
-  } else if (strcmp("crear_usu", command) == 0 && conv == 2){
-    if (sscanf(message,"%ms %ms",&arg1, &arg2) == 2) {
-
-      salida = crearUsuario(arg1, arg2);
-      if (salida == 1){
-        result = "\nUsuario creado exitosamente.";
-      } else {
-        result = "\nNombre de usuario ya existe.";
-      }
-    } else {
-      result = "\nNo se pudo ejecutar el comando.";
-    }
-    return(result);
-
-  } else if (strcmp("elim_usu", command) == 0 && conv == 2){
-    if (sscanf(message,"%ms %ms",&arg1, &arg2) == 2) {
-
-      salida = eliminarUsuario(arg1, arg2);
-      if (salida == -2) {
-        result = "\nContraseña incorrecta.";
-      } else if (salida == 0) {
-        result = "\nEl usuario está conectado a una sala. No puede ser eliminado.";
-      } else if (salida == 1){
-        result = "\nEl usuario fue eliminado exitosamente.";
-      } else {
-        result = "\nEl usuario no existe.";
-      }
-    } else {
-      result = "\nNo se pudo ejecutar el comando.";
-    }
-    return(result);
-
-  } else if (strcmp("crear_sala", command) == 0 && conv == 2){
-
-      salida = crearSala(message);
-      if (salida == 1){
-        result = "\nSala creada exitosamente.";
-      } else {
-        result = "\nLa sala ya existe.";
-      }
-      return(result);
-
-  } else if (strcmp("elim_sala", command) == 0 && conv == 2){
-
-      salida = eliminarSala(message);
-      if(salida == 0) {
-        result = "\nHay usuarios conectados en la sala. No puede ser eliminada.";
-      } else if (salida == 1) {
-        result = "\nSala eliminada exitosamente.";
-      } else {
-        result = "\nLa sala no existe.";
-      }
-      return(result);
-
-  } else if (strcmp("hab_sala", command) == 0 && conv == 2){
-
-      salida = habilitarSala(message);
-      if (salida == -1){
-          result = "\nLa sala no existe.";
-      } else {
-          result = "\nSala habilitada.";
-      }
-      return(result);
-
-  } else if (strcmp("deshab_sala", command) == 0 && conv == 2){
-
-      salida = deshabilitarSala(message);
-      if (salida == 0) {
-        result = "\nHay usuarios conectados en la sala. No puede ser deshabilitada.";
-      } else if (salida == 1){
-        result = "\nSala deshabilitada exitosamente.";
-      } else {
-        result = "\nLa sala no existe.";
-      }
-      return(result);
-
-  } else if (strcmp("ver_log", command) == 0){
-      return("Holis");
-
-  } else {
-      result = "\nNo se pudo ejecutar el comando.";
-      return(result);
+    count -= escrito;
+    buf += escrito;
   }
 }
 
-void * receiveMessage(void * socket) {
-  int sockfd, ret;
-  char buffer[BUF_SIZE];
-  char * command;
-  char * message;
-  char * arg1;
-  char * arg2;
-//  char * buf;
-  char * valid;
-  int conv;
-  sockfd = (int) socket;
-  memset(buffer, 0, BUF_SIZE);  
-  for (;;) {
-    ret = recvfrom(sockfd, buffer, BUF_SIZE, 0, NULL, NULL); 
-    if (ret < 0) {  
-      printf("Error recibiendo data!\n");    
-    } else {
+/**
+ * Se encarga de leer del file descriptor del socket el contenido
+ * de buf.
+ * @param socket file descriptor del socket del que se va a leer.
+ * @param buf direccion donde se almacenará lo leido en fd.
+ * @param count tamaño del contenido que se va a leer.
+ */
+void leer(int socket, void * buf, size_t count) {
+  while (count > 0) {
+    int leido = read(socket, buf, count);
 
-    // Validar el formato del comando del cliente
-    conv = sscanf(buffer,"%ms %m[^\t\n]",&command, &message);
-//    printf("Conv %d!\n", conv);    
-    if (conv != -1) {
-
-      if (conv > 1) {
-          sscanf(message,"%ms %ms",&arg1, &arg2);
-      }
-
-      valid = validateMsg(command, message, arg1, arg2, conv);
-    if (valid != NULL) {
-        //printf("Resultado %s: ", valid);
-    }
-    } else {
-        conv = 0;
-         printf("\nError de datos???\n");
+    if (-1 == leido) {
+      if (EINTR == errno || EAGAIN == errno) continue;
+      perror("read");
+      exit(EX_IOERR);
     }
 
-      if (valid != NULL){
-        printf("\nResultado: %s\n", valid);
-        // Aqui, conseguir la manera de enviar lo que está en la variable valid al cliente.
-        printf("client: ");
-        fputs(buffer, stdout);
-      }
-    }  
- }
+    count -= leido;
+    buf += leido;
+  }
 }
 
-void main() {
-  struct sockaddr_in addr, cl_addr;
-  int sockfd, len, ret, newsockfd;
-  char buffer[BUF_SIZE];
-  pid_t childpid;
-  char clientAddr[CLADDR_LEN];
-  pthread_t rThread;
+int main() {
+        int i;
+        int j;
+        int verbose = 1;
+        GList * open_conn = NULL;
+        int ipv = IPV_UNSET; // Opción para protocolo de red (versión de IP)
+        int backlog = DEFAULT_BACKLOG; // Opción para máximo número de conexiones en espera
 
-  struct usuario * u = malloc(sizeof(struct usuario));
-  u->nombre = "admin";
-  u->clave = "claveadmin";
-  u->status = 0;
-  u->is_admin = 1;
-  user = g_list_append(user, u);
+        struct usuario * u = malloc(sizeof(struct usuario));
+        u->nombre = "admin";
+        u->clave = "claveadmin";
+        u->status = 0;
+        u->is_admin = 1;
+        u->socket = -1;
+        user = g_list_append(user, u);
 
-  sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  if (sockfd < 0) {
-    printf("Error creando socket!\n");
-    exit(1);
-  }
- 
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_addr.s_addr = INADDR_ANY;
-  addr.sin_port = PORT;
- 
-  ret = bind(sockfd, (struct sockaddr *) &addr, sizeof(addr));
-  if (ret < 0) {
-    printf("Error binding!\n");
-    exit(1);
- }
-  
-  printf("Esperando conexion...\n");
-  listen(sockfd, 5);
-  
-  len = sizeof(cl_addr);
-  newsockfd = accept(sockfd, (struct sockaddr *) &cl_addr, &len);
-  if (newsockfd < 0) {
-    printf("Error aceptando conexion!\n");
-    exit(1);
-  } 
-  
-  inet_ntop(AF_INET, &(cl_addr.sin_addr), clientAddr, CLADDR_LEN);
-  printf("Coneccion establecida con %s...\n", clientAddr); 
-  
-  memset(buffer, 0, BUF_SIZE);
-  
-  ret = pthread_create(&rThread, NULL, receiveMessage, (void *) newsockfd);
-  if (ret) {
-    printf("ERROR: Return Code from pthread_create() is %d\n", ret);
-    exit(1);
-  }
-  
-  while (fgets(buffer, BUF_SIZE, stdin) != NULL) {
-    ret = sendto(newsockfd, buffer, BUF_SIZE, 0, (struct sockaddr *) &cl_addr, len);
-    if (ret < 0) {  
-      printf("Error enviando data!\n");  
-      exit(1);
-    }
-  }   
-  
-  close(newsockfd);
-  close(sockfd);
-  
-  pthread_exit(NULL);
-  return;
+        struct addrinfo hints; // Opciones para getaddrinfo()
+        memset(&hints, 0, sizeof(struct addrinfo));
+        hints.ai_family = AF_UNSPEC;
+        hints.ai_flags = AI_PASSIVE;
+        hints.ai_socktype = SOCK_STREAM;
+
+        struct protoent * proto = getprotobyname("TCP"); // Protocolo de transporte
+        hints.ai_protocol = proto->p_proto;
+
+        struct addrinfo *results; // Retorno de getaddrinfo()
+        i = getaddrinfo(NULL, PORT, &hints, &results);
+        if (0 != i) {
+          fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(i));
+          exit(EX_OSERR);
+        }
+
+        int addrc; // Número de sockets retornado por getaddrinfo()
+        struct addrinfo *rp; // Iterador para retorno de getaddrinfo()
+        for (addrc = 0, rp = results; NULL != rp; rp = rp->ai_next, ++addrc);
+        if (0 == addrc) {
+          fprintf(stderr, "No se encontró ninguna manera de crear el servicio.\n");
+          exit(EX_UNAVAILABLE);
+        }
+
+        int * sockfds = (int *)calloc(addrc, sizeof(int)); // Arreglo de file descriptors para atender clientes
+        if (NULL == sockfds) {
+          perror("calloc");
+          exit(EX_OSERR);
+        }
+
+        int socks = 0;
+        for (i = 0, rp = results; NULL != rp; ++i, rp = rp->ai_next) {
+          sockfds[i] = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+          if (-1 == sockfds[i]) {
+            if (verbose) perror("socket");
+            sockfds[i] = -1;
+            continue;
+          }
+
+          if (IPV_UNSET == ipv && PF_INET6 == rp->ai_family) {
+#if defined(IPV6_V6ONLY)
+            j = 1;
+            if (-1 == setsockopt(sockfds[i], IPPROTO_IPV6, IPV6_V6ONLY, &j, sizeof(j))) {
+              if (verbose) perror("setsockopt");
+              close(sockfds[i]);
+              sockfds[i] = -1;
+              continue;
+            }
+#else
+            fprintf(stderr, "Imposible usar la opción IPV6_V6ONLY para sockets IPv6; no se utilizará el socket.\n");
+            close(sockfds[i]);
+            sockfds[i] = -1;
+            continue;
+#endif
+          }
+
+          j = 1;
+          if (-1 == setsockopt(sockfds[i], SOL_SOCKET, SO_REUSEADDR, &j, sizeof(j))) {
+            if (verbose) perror("setsockopt");
+            close(sockfds[i]);
+            sockfds[i] = -1;
+            continue;
+          }
+
+          if (-1 == bind(sockfds[i], rp->ai_addr, rp->ai_addrlen)) {
+            if (verbose) perror("bind");
+            close(sockfds[i]);
+            sockfds[i] = -1;
+            continue;
+          }
+
+          if (-1 == listen(sockfds[i], backlog)) {
+            if (verbose) perror("listen");
+            close(sockfds[i]);
+            sockfds[i] = -1;
+            continue;
+          }
+
+          ++socks;
+
+          if (verbose) {
+            fprintf(
+              stderr,
+              "Recibiendo conexiones en:\n"
+              "ai_family = %d\n"
+              "ai_socktype = %d\n"
+              "ai_protocol = %d\n"
+              "\n",
+              rp->ai_family,
+              rp->ai_socktype,
+              rp->ai_protocol
+            );
+            proto = getprotobynumber(rp->ai_protocol);
+            if (NULL == proto) {
+              fprintf(stderr, "protocolo desconocido!\n");
+            } else {
+              fprintf(stderr, "protocolo: %s\n", proto->p_name);
+            }
+          }
+        }
+
+        freeaddrinfo(results);
+
+        if (socks <= 0) {
+          fprintf(stderr, "No se encontró ninguna manera de crear el servicio.\n");
+          exit(EX_UNAVAILABLE);
+        }
+
+        for (i = 0, j = 0; i < socks; ++i) {
+          if (sockfds[i] == -1) {
+            if (j == 0) j = i+1;
+            for (; j < addrc; ++j) if (sockfds[j] != -1) break;
+            sockfds[i] = sockfds[j];
+            ++j;
+          }
+        }
+        sockfds = (int *)(realloc(sockfds, socks*sizeof(int)));
+        if (NULL == sockfds) {
+          perror("realloc");
+          exit(EX_OSERR);
+        }
+
+        for (i = 0; i < socks; ++i) {
+          if (-1 == fcntl(sockfds[i], F_SETFL, O_NONBLOCK)) {
+            perror("fcntl");
+            exit(EX_OSERR);
+          }
+        }
+
+        for (;;) { // main loop
+          int nfds = -1; // Número de sockets con actividad para select()
+          fd_set fds; // Conjunto de file descriptors para select()
+          fd_set listen_fds; // Conjunto de file descriptors que esperan por conexiones
+          FD_ZERO(&fds);
+
+          for (i = 0; i < socks; ++i) {
+            nfds = MAX(nfds, sockfds[i]);
+            FD_SET(sockfds[i], &fds);
+          }
+          for (i = 0; i < g_list_length(open_conn); i++){
+            
+            nfds = MAX(nfds, *((int *)g_list_nth(open_conn, i)->data));
+            FD_SET(*((int *)g_list_nth(open_conn, i)->data), &fds);
+          }
+          if (nfds < 0) {
+            fprintf(stderr, "Error calculando valor máximo de sockets: se obtuvo %d.\n", nfds);
+            exit(EX_SOFTWARE);
+          }
+
+          if ((nfds = select(nfds + 1, &fds, NULL, NULL, NULL)) == -1) {
+            if (errno == EINTR) {
+              if (verbose) perror("select");
+              continue;
+            } else {
+              perror("select");
+              exit(EX_OSERR);
+            }
+          }
+
+          for (i = 0; i < socks; ++i) {
+            if (FD_ISSET(sockfds[i], &fds)) {
+              int conn = accept(sockfds[i], NULL, NULL); 
+              if (-1 == conn) {
+                if (verbose) {
+                  perror("Conexión perdida; error haciendo accept");
+                }
+                continue;
+              }
+              if (-1 == fcntl(conn, F_SETFL, O_NONBLOCK)) {
+                if (verbose) {
+                  perror("fcntl");
+                }
+                if (shutdown(conn, SHUT_RDWR) == -1) {
+                  if (verbose) perror("shutdown");
+                }
+                if (close(conn) == -1) {
+                  if (verbose) perror("close");
+                }
+                continue;
+              }
+              int * conn_p = malloc(sizeof(int));
+              *conn_p = conn;
+              open_conn = g_list_append(open_conn, conn_p);
+              // TODO: agregar conn a lista de conexiones abiertas
+            } /* if (FD_ISSET(fds)) */
+          } /* for (0 <= i < socks) */
+
+          for (i = 0; i < g_list_length(open_conn); i++) {
+            int conn = *((int *)g_list_nth(open_conn, i)->data);
+            if (FD_ISSET(conn, &fds)) {
+              int c;
+              switch (read(conn, &c, sizeof(int))) {
+                case -1:
+                  if (EINTR == errno || EAGAIN == errno) continue;
+                  if (verbose) perror("Error leyendo comando de cliente: recv");
+                  exit(EX_IOERR);
+                break;
+	        case 0:
+                  if (verbose) fprintf(stderr, "Conexión terminada por el cliente.\n");
+                break;
+                default:
+                  puts("miaaaaau"); ((void (*)())0)();
+	        case 4: {
+                  int salida;
+                  char * result = NULL;
+                  lista = (char *)calloc(BUF_SIZE + 1, sizeof(char));
+                  switch (c) {
+                    case COMANDO_CONECTARSE: {
+                      int longitud_nombre;
+                      leer(conn, &longitud_nombre, sizeof(int));
+                      char * nombre = (char *)calloc(longitud_nombre + 1, sizeof(char));
+                      leer(conn, nombre, longitud_nombre);
+                      int longitud_clave;
+                      leer(conn, &longitud_clave, sizeof(int));
+                      char * clave = (char *)calloc(longitud_nombre + 1, sizeof(char));
+                      leer(conn, clave, longitud_clave);
+                      salida = conectar(nombre, clave, conn);
+                      if (salida == 1) {
+                        result = "Conexion exitosa.\n";
+                      } else if (salida == 0) {
+                        result = "El usuario ya está conectado.\n";      
+                      } else if (salida == -2) {
+                        result = "Contraseña Invalida.";
+                      } else {
+                        result = "Nombre de usuario no existe.\n";      
+                      }
+                    } break;
+                    case COMANDO_SALIR: {
+                      GList * resultado = g_list_find_custom(user, &conn, buscarUsuarioPorSocket);
+                      char * nombre = ((struct usuario *)resultado->data)->nombre;
+                      salida = salir(nombre);
+		      if (salida == 1) {
+		        result = "El usuario ha salido del chat exitosamente.\n";
+		      } else if (salida == 0) {
+		        result = "El usuario no está conectado.\n";
+		      } else if (salida == 2) {
+		        result = "El usuario está conectado a una sala.\n";
+		      } else {
+		        result = "El usuario no existe.\n";
+		      }
+                    } break;
+                    case COMANDO_ENTRAR: {
+                      int longitud_sala;
+                      leer(conn, &longitud_sala, sizeof(int));
+		      char * sala = (char *)calloc(longitud_sala + 1, sizeof(char));
+                      leer(conn, sala, longitud_sala);
+                      GList * resultado = g_list_find_custom(user, &conn, buscarUsuarioPorSocket);
+                      char * nombre = ((struct usuario *)resultado->data)->nombre;
+		      salida = entrarSala(sala, nombre);
+		      if (salida == -4) {
+			result = "El usuario no está conectado al chat.\n";
+		      } else if (salida == -3) {
+		        result = "El usuario no existe.\n";
+		      } else if (salida == -2) {
+		        result = "El usuario ya está conectado a una sala.\n";
+		      } else if (salida == 0) {
+		        result = "La sala está inactiva.\n";
+		      } else if (salida == 1) {
+		        result = "Conexión exitosa a la sala.\n";
+		      } else {
+		        result = "La sala no existe.\n";
+		      }
+                    } break;
+                    case COMANDO_DEJAR: {
+                      int longitud_sala;
+                      leer(conn, &longitud_sala, sizeof(int));
+		      char * sala = (char *)calloc(longitud_sala + 1, sizeof(char));
+                      leer(conn, sala, longitud_sala);
+                      GList * resultado = g_list_find_custom(user, &conn, buscarUsuarioPorSocket);
+                      char * nombre = ((struct usuario *)resultado->data)->nombre;
+                      salida = dejarSala(sala, nombre);
+                      if (salida == 0) {
+                        result = "El usuario no está conectado a la sala.\n";
+                      } else if (salida == 1){
+                        result = "El usuario dejó la sala exitosamente.\n";
+                      } else {
+                        result = "La sala no existe.\n";
+                      }
+                    } break;
+                    case COMANDO_VER_SALAS: {
+                      GList * resultado = g_list_find_custom(user, &conn, buscarUsuarioPorSocket);
+                      char * nombre = ((struct usuario *)resultado->data)->nombre;
+                      resultado = g_list_find_custom(user, nombre, buscarUsuarioPorNombre);
+                      int is_admin = ((struct usuario *)resultado->data)->is_admin;
+                      salida = verSalas(is_admin);
+                      if (salida == 1) {
+		        result = (char *)calloc(strlen(lista) + 1, sizeof(char));
+                        result = lista;
+                      } else {
+                        result = "No hay salas en el servidor.\n";
+                      }
+                    } break;
+                    case COMANDO_VER_USUARIOS: {
+                      GList * resultado = g_list_find_custom(user, &conn, buscarUsuarioPorSocket);
+                      char * nombre = ((struct usuario *)resultado->data)->nombre;
+                      int is_admin = ((struct usuario *)resultado->data)->is_admin;
+                      salida = verUsuarios(is_admin);
+                      if (salida == 1) {
+		        result = (char *)calloc(strlen(lista) + 1, sizeof(char));
+                        result = lista;
+                      } else {
+                        result = "No hay usuarios conectados en el servidor.\n";
+                      }
+                    } break;
+                    case COMANDO_VER_USUARIOS_SALAS: {
+                      int longitud_sala;
+                      leer(conn, &longitud_sala, sizeof(int));
+		      char * sala = (char *)calloc(longitud_sala + 1, sizeof(char));
+                      leer(conn, sala, longitud_sala);
+                      salida = verUsuSalas(sala, conn);
+                      if (salida == -2) {
+                        result = "La sala está inactiva\n";
+                      } else if (salida == 0) {
+                        result = "La sala no tiene usuarios conectados\n";
+                      } else if (salida == 1) {
+                        result = "";
+                      } else {
+                        result = "La sala no existe.\n";
+                      }
+                    } break;
+                    case COMANDO_ENVIAR_MENSAJE: {
+                      int longitud_mensaje;
+                      leer(conn, &longitud_mensaje, sizeof(int));
+		      char * mensaje = (char *)calloc(longitud_mensaje + 1, sizeof(char));
+                      leer(conn, mensaje, longitud_mensaje);
+
+                      GList * resultado = g_list_find_custom(user, &conn, buscarUsuarioPorSocket);
+                      char * nombre = ((struct usuario *)resultado->data)->nombre;
+                      char * sala = ((struct usuario *)resultado->data)->sala;
+                      salida = enviarMensaje(sala, mensaje);
+                      result = "";
+                    } break;
+                    case COMANDO_CREAR_USUARIO: {
+                      int longitud_nombre;
+                      leer(conn, &longitud_nombre, sizeof(int));
+                      char * nombre = (char *)calloc(longitud_nombre + 1, sizeof(char));
+                      leer(conn, nombre, longitud_nombre);
+                      int longitud_clave;
+                      leer(conn, &longitud_clave, sizeof(int));
+                      char * clave = (char *)calloc(longitud_nombre + 1, sizeof(char));
+                      leer(conn, clave, longitud_clave);
+                      GList * resultado = g_list_find_custom(user, &conn, buscarUsuarioPorSocket);
+                      int is_admin = ((struct usuario *)resultado->data)->is_admin;
+                      if (is_admin == 0) {
+                        result = "Comando no autorizado\n";
+                        break;
+                      }
+                      salida = crearUsuario(nombre, clave);
+                      if (salida == 1){
+                        result = "Usuario creado exitosamente.\n";
+                      } else {
+                        result = "Nombre de usuario ya existe.\n";
+                      }
+                    } break;
+                    case COMANDO_ELIMINAR_USUARIO: {
+                      int longitud_nombre;
+                      leer(conn, &longitud_nombre, sizeof(int));
+		      char * nombre = (char *)calloc(longitud_nombre + 1, sizeof(char));
+                      leer(conn, nombre, longitud_nombre);
+                      int longitud_clave;
+                      leer(conn, &longitud_clave, sizeof(int));
+                      char * clave = (char *)calloc(longitud_nombre + 1, sizeof(char));
+                      leer(conn, clave, longitud_clave);
+                      GList * resultado = g_list_find_custom(user, &conn, buscarUsuarioPorSocket);
+                      int is_admin = ((struct usuario *)resultado->data)->is_admin;
+                      if (is_admin == 0) {
+                        result = "Comando no autorizado\n";
+                        break;
+                      }
+                      salida = eliminarUsuario(nombre, clave);
+                      if (salida == -2) {
+                        result = "Contraseña incorrecta.\n";
+                      } else if (salida == 0) {
+                        result = "El usuario está conectado a una sala. No puede ser eliminado.\n";
+                      } else if (salida == 1){
+                        result = "El usuario fue eliminado exitosamente.\n";
+                      } else {
+                        result = "El usuario no existe.\n";
+                      }
+                    } break;
+                    case COMANDO_CREAR_SALA: {
+                      int longitud_sala;
+                      leer(conn, &longitud_sala, sizeof(int));
+		      char * sala = (char *)calloc(longitud_sala + 1, sizeof(char));
+                      leer(conn, sala, longitud_sala);
+                      GList * resultado = g_list_find_custom(user, &conn, buscarUsuarioPorSocket);
+                      int is_admin = ((struct usuario *)resultado->data)->is_admin;
+                      if (is_admin == 0) {
+                        result = "Comando no autorizado\n";
+                      } else {
+                        salida = crearSala(sala);
+                        if (salida == 1){
+                          result = "Sala creada exitosamente.\n";
+                        } else {
+                          result = "La sala ya existe.\n";
+                        }
+                      }
+                    } break;
+                    case COMANDO_ELIMINAR_SALA: {
+                      int longitud_sala;
+                      leer(conn, &longitud_sala, sizeof(int));
+		      char * sala = (char *)calloc(longitud_sala + 1, sizeof(char));
+                      leer(conn, sala, longitud_sala);
+                      GList * resultado = g_list_find_custom(user, &conn, buscarUsuarioPorSocket);
+                      int is_admin = ((struct usuario *)resultado->data)->is_admin;
+                      if (is_admin == 0) {
+                        result = "Comando no autorizado\n";
+                        break;
+                      }
+		      salida = eliminarSala(sala);
+		      if(salida == 0) {
+		        result = "Hay usuarios conectados en la sala. No puede ser eliminada.\n";
+		      } else if (salida == 1) {
+		        result = "Sala eliminada exitosamente.\n";
+		      } else {
+		        result = "La sala no existe.\n";
+		      }
+                    } break;
+                    case COMANDO_HABILITAR_SALA: {
+                      int longitud_sala;
+                      leer(conn, &longitud_sala, sizeof(int));
+		      char * sala = (char *)calloc(longitud_sala + 1, sizeof(char));
+                      leer(conn, sala, longitud_sala);
+                      GList * resultado = g_list_find_custom(user, &conn, buscarUsuarioPorSocket);
+                      int is_admin = ((struct usuario *)resultado->data)->is_admin;
+                      if (is_admin == 0) {
+                        result = "Comando no autorizado\n";
+                        break;
+                      }
+                      salida = habilitarSala(sala);
+                      if (salida == -1){
+                        result = "La sala no existe.\n";
+                      } else {
+                        result = "Sala habilitada.\n";
+                      }
+                    } break;
+                    case COMANDO_DESHABILITAR_SALA: {
+                      int longitud_sala;
+                      leer(conn, &longitud_sala, sizeof(int));
+		      char * sala = (char *)calloc(longitud_sala + 1, sizeof(char));
+                      leer(conn, sala, longitud_sala);
+                      GList * resultado = g_list_find_custom(user, &conn, buscarUsuarioPorSocket);
+                      int is_admin = ((struct usuario *)resultado->data)->is_admin;
+                      if (is_admin == 0) {
+                        result = "Comando no autorizado\n";
+                        break;
+                      }
+                      salida = deshabilitarSala(sala);
+                      if (salida == -1){
+                        result = "La sala no existe.\n";
+                      } else {
+                        result = "Sala deshabilitada exitosamente.\n";
+                      }
+                    } break;
+                    case COMANDO_VER_BITACORA: {
+                    } break;
+                  }
+                  escribir(conn, result, strlen(result));
+                } break;
+              } /* switch(read(enum comando)) */
+            } /* if (FD_ISSET(fds)) */
+          } /* for (sockets a clientes) */
+        } /* main loop */
+
+        if (verbose) fprintf(stderr, "Error imposible.\n");
+        exit(EX_SOFTWARE);
 }
